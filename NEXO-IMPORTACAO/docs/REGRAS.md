@@ -3,6 +3,8 @@
 ## Origem e precedência
 Fonte disponível: skill `analista-produtos-importacao:avaliar-produtos-importacao` e base `references/conhecimento-importacao.md`, versão 08/10/2026. Trata-se de continuidade parcial; não há exportação universal de conversas ou prova de acesso à plataforma anterior. A instrução humana explícita mais recente prevalece sobre registros antigos. Nenhuma tarifa foi reconfirmada durante a construção do painel.
 
+Atualização v1.1, por pedido humano de tornar os dados alteráveis: a faixa, lote, meta e exclusões abaixo são valores iniciais recuperados, não bloqueios de interface. Configurações salvas pelo usuário governam o cenário atual; seu efeito é exibido no painel/dossiê e registrado no histórico. Meta e condições efetivas não são certificadas automaticamente como exigência legal. Dados da operação podem ser preenchidos localmente, sem divulgação no código público.
+
 ## Operação e seleção
 - Produtos genéricos da China, pouco capital, pequeno volume e baixa complexidade regulatória. Faixa alvo R$ 19,90–39,90 por unidade vendável, com exceções específicas possíveis.
 - Lote referencial de 200 unidades vendáveis; cenário específico pode ter outro lote. Distinguir embalagens do fornecedor, peças, pares e kits de revenda.

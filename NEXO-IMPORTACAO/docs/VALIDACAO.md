@@ -16,3 +16,10 @@ Os helpers locais da skill Sites não estavam instalados no executor e não pude
 
 ## Escopo
 Nova pasta local e prefixo novo no GitHub. Verificar após publicação que os blobs anteriores permanecem idênticos e que somente NEXO-IMPORTACAO/ foi adicionado. Dados cadastrados por usuários não pertencem ao source control e não são enviados ao GitHub pelo painel.
+
+## Atualização v1.1 — edição dos dados
+Pedido humano: permitir alteração dos dados. Meta de ROI, faixa alvo, lote referencial, identificação, destino, regime e inclusão de DAS/abastecimento agora são configuráveis. Cadastro ampliado, bases percentuais, custos e evidências editáveis; resultados continuam derivados. A origem e os registros de ação mantêm rastreabilidade.
+
+Motor atualizado:20/20 testes passaram, incluindo os14 anteriores e6 adicionais para meta/preço mínimo variável, DAS condicional, abastecimento condicional, base percentual, configurações inválidas e normalização dos novos campos. Alterações de dados relevantes retiram a confirmação correspondente, exigindo nova conferência humana; não transformam valores editados em evidência automaticamente.
+
+Navegador: edição de configurações e persistência após reload, campos DAS/abastecimento, cadastro ampliado, base de incidência, duplicação preservando original, backup v2 com configurações, restauração com confirmação, layout mobile390px, migração de cadastro legado v1 e ausência de erros JS passaram. Mesma chave local preserva dados da versão anterior; importação de produtos não substitui existentes. Testes feitos com valores fictícios; cadastros privados não entram na publicação.

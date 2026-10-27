@@ -6,6 +6,9 @@ export const CHANNELS = [
   {id:'shopee',label:'Shopee',market:'Shopee',short:'Shopee'}
 ];
 export const COST_FIELDS=['price','buyerShipping','commission','fixed','logistics','packaging','ads','losses','saleTax','storage','monthly','other'];
+export const DEFAULT_SETTINGS={workspaceName:'NEXO Importação',companyName:'',country:'Brasil',city:'',region:'',postalCode:'',taxRegime:'A confirmar',targetRoi:100,targetPriceMin:19.9,targetPriceMax:39.9,referenceLot:200,includeDAS:false,includeInbound:false,policyNotes:''};
+export function normaliseSettings(raw={}){const s={...DEFAULT_SETTINGS};for(const key of Object.keys(s)){const v=raw?.[key];if(typeof s[key]==='boolean'){if(typeof v==='boolean')s[key]=v;}else if(typeof s[key]==='number'){if(v!==undefined)s[key]=num(v);}else if(typeof v==='string')s[key]=v.slice(0,12000);}return s;}
+export function settingsIssues(s){const x=[];if(!valid(s.targetRoi))x.push('Meta de ROI inválida ou ausente.');if(!valid(s.targetPriceMin)||!valid(s.targetPriceMax)||num(s.targetPriceMax)<num(s.targetPriceMin))x.push('Faixa de preço alvo inválida.');if(!Number.isSafeInteger(num(s.referenceLot))||num(s.referenceLot)<=0)x.push('Lote referencial precisa ser inteiro positivo.');return x;}
 export const num=v=>v===null||v===undefined||String(v).trim()===''?null:Number(v);
 const valid=v=>Number.isFinite(num(v))&&num(v)>=0;
 export function quantity(p){
@@ -50,39 +53,42 @@ export function evidenceIssues(p,c,referenceDate){
   if(c.costsComplete!==true)issues.push('Completude dos custos de venda não confirmada.');
   return issues;
 }
-export function calculate(p,id,referenceDate){
+export function calculate(p,id,referenceDate,settings=DEFAULT_SETTINGS){
+  const config=normaliseSettings(settings),goal=num(config.targetRoi);
   const c=p.channels?.[id]||{},q=quantity(p),imp=importedCost(p);
   const missing=COST_FIELDS.filter(k=>!valid(c[k]));
-  const issues=[...(q.issues||[]),...(imp.issues||[])];
+  const issues=[...(q.issues||[]),...(imp.issues||[]),...settingsIssues(config)];
+  if(config.includeDAS&&!valid(c.das))issues.push('DAS incluído: informe a alíquota do cenário.');
+  if(config.includeInbound&&!valid(c.inbound))issues.push('Abastecimento incluído: informe o custo por kit.');
   if(missing.length)issues.push('Custos/parâmetros do canal ausentes ou inválidos: '+missing.join(', '));
   if(num(c.price)===0)issues.push('Preço deve ser positivo.');
-  const t=['commission','ads','losses','saleTax'].reduce((s,k)=>s+(num(c[k])||0),0)/100;
+  const t=(['commission','ads','losses','saleTax'].reduce((s,k)=>s+(num(c[k])||0),0)+(config.includeDAS?(num(c.das)||0):0))/100;
   if(t>=1)issues.push('Soma de percentuais precisa ser inferior a 100%.');
   if(issues.length)return {complete:false,issues,financial:'PENDENTE',evidence:'NÃO CONFIRMADO',status:'PENDENTE'};
-  const price=num(c.price),buyer=num(c.buyerShipping),b=['fixed','logistics','packaging','other'].reduce((s,k)=>s+num(c[k]),0),h=num(c.storage)+num(c.monthly);
-  const revenue=q.kits*(price+buyer),percentageCosts=revenue*t,selling=percentageCosts+q.kits*b+h,profit=revenue-imp.total-selling,roi=100*profit/imp.total;
-  const minimum=(2*imp.total/q.kits+b+h/q.kits)/(1-t)-buyer;
+  const price=num(c.price),buyer=num(c.buyerShipping),b=['fixed','logistics','packaging','other'].reduce((s,k)=>s+num(c[k]),0)+(config.includeInbound?num(c.inbound):0),h=num(c.storage)+num(c.monthly);
+  const revenue=q.kits*(price+buyer),rateRevenue=q.kits*(price+(c.rateBase==='product'?0:buyer)),percentageCosts=rateRevenue*t,selling=percentageCosts+q.kits*b+h,profit=revenue-imp.total-selling,roi=100*profit/imp.total;
+  const minimum=((1+goal/100)*imp.total/q.kits+b+h/q.kits-(c.rateBase==='product'?buyer:0))/(1-t)-(c.rateBase==='product'?0:buyer);
   const lower=num(c.bandMin),upper=num(c.bandMax);
   const bandKnown=lower!==null&&upper!==null&&lower>=0&&upper>=lower;
   const priceInBand=bandKnown&&price>=lower&&price<=upper;
   const minimumInBand=bandKnown&&minimum>=lower&&minimum<=upper;
   const evidence=evidenceIssues(p,c,referenceDate);
   if(!priceInBand)evidence.push('Preço fora da faixa declarada ou faixa de tarifa ausente.');
-  const financial=roi>=100?'ATINGE META':'ABAIXO DA META';
-  return {complete:true,issues:evidence,kits:q.kits,leftover:q.leftover,imported:imp.total,revenue,selling,profit,roi,minimum,minimumValid:minimumInBand,financial,evidence:evidence.length?'PARCIALMENTE VALIDADO':'VALIDADO POR DECLARAÇÃO HUMANA',status:roi<100?'REPROVADO FINANCEIRAMENTE':evidence.length?'APROVAÇÃO PENDENTE':'APROVADO NO CENÁRIO',components:{commission:revenue*num(c.commission)/100,ads:revenue*num(c.ads)/100,losses:revenue*num(c.losses)/100,saleTax:revenue*num(c.saleTax)/100,fixed:q.kits*num(c.fixed),logistics:q.kits*num(c.logistics),packaging:q.kits*num(c.packaging),other:q.kits*num(c.other),storage:num(c.storage),monthly:num(c.monthly)}};
+  const financial=roi>=goal?'ATINGE META':'ABAIXO DA META';
+  return {complete:true,targetRoi:goal,issues:evidence,kits:q.kits,leftover:q.leftover,imported:imp.total,revenue,selling,profit,roi,minimum,minimumValid:minimumInBand,financial,evidence:evidence.length?'PARCIALMENTE VALIDADO':'VALIDADO POR DECLARAÇÃO HUMANA',status:roi<goal?'REPROVADO FINANCEIRAMENTE':evidence.length?'APROVAÇÃO PENDENTE':'APROVADO NO CENÁRIO',components:{commission:rateRevenue*num(c.commission)/100,ads:rateRevenue*num(c.ads)/100,losses:rateRevenue*num(c.losses)/100,saleTax:rateRevenue*num(c.saleTax)/100,das:config.includeDAS?rateRevenue*num(c.das)/100:0,inbound:config.includeInbound?q.kits*num(c.inbound):0,fixed:q.kits*num(c.fixed),logistics:q.kits*num(c.logistics),packaging:q.kits*num(c.packaging),other:q.kits*num(c.other),storage:num(c.storage),monthly:num(c.monthly)}};
 }
-export function overall(p,date){
-  const results=Object.fromEntries(CHANNELS.map(c=>[c.id,calculate(p,c.id,date)]));
+export function overall(p,date,settings=DEFAULT_SETTINGS){
+  const config=normaliseSettings(settings),results=Object.fromEntries(CHANNELS.map(c=>[c.id,calculate(p,c.id,date,config)]));
   const groups=[['mlFull','mlOwn'],['amazonFba','amazonOwn'],['shopee']];
   const approved=groups.every(g=>g.some(id=>results[id].status==='APROVADO NO CENÁRIO'));
-  const failed=groups.some(g=>g.every(id=>results[id].complete&&results[id].roi<100));
+  const failed=groups.some(g=>g.every(id=>results[id].complete&&results[id].roi<num(config.targetRoi)));
   return {results,status:approved?'APROVADO NOS 3 MARKETPLACES':failed?'REPROVADO NO CRITÉRIO CONJUNTO':'APROVAÇÃO PENDENTE'};
 }
 export function storageUniform(units,days,daily){
   if([units,days,daily].some(v=>!valid(v))||num(units)<=0||num(days)<=0)return null;
   return num(units)*num(days)*num(daily)/2;
 }
-export function emptyChannel(){return Object.fromEntries([...COST_FIELDS.map(k=>[k,'']),['bandMin',''],['bandMax',''],['source',''],['category',''],['plan',''],['checkedOn',''],['validFrom',''],['validUntil',''],['verified',false],['costsComplete',false]]);}
+export function emptyChannel(){return Object.fromEntries([...COST_FIELDS.map(k=>[k,'']),['das',''],['inbound',''],['rateBase','gross'],['bandMin',''],['bandMax',''],['source',''],['category',''],['plan',''],['checkedOn',''],['validFrom',''],['validUntil',''],['verified',false],['costsComplete',false]]);}
 export function newProduct(id){return {id,name:'Novo produto',origin:'manual',stage:'Triagem',bundles:'',piecesPerBundle:'',piecesPerKit:'',costMode:'detail',merchandise:'',internationalFreight:'',insurance:'',ii:'',icms:'',expenses:'',checkoutTotal:'',supplierSource:'',importSource:'',regulatorySource:'',marketSource:'',logisticsSource:'',currency:'',exchangeSource:'',weightGrams:'',length:'',width:'',height:'',importVerified:false,regulatoryVerified:false,marketVerified:false,notes:'',channels:Object.fromEntries(CHANNELS.map(c=>[c.id,emptyChannel()]))};}
 export function demoProduct(id){
   const p=newProduct(id);Object.assign(p,{name:'Kit demonstrativo · 5 peças',origin:'demo',stage:'Simulação',bundles:100,piecesPerBundle:10,piecesPerKit:5,costMode:'detail',merchandise:400,internationalFreight:100,insurance:0,ii:300,icms:800*.17/.83,expenses:0,notes:'DADOS FICTÍCIOS de teste. II 60% e ICMS 17% são hipóteses exclusivas deste exemplo, não legislação/tarifas atuais. Não é cotação.'});
@@ -91,8 +97,9 @@ export function demoProduct(id){
 }
 export function normaliseProduct(raw,id){
   const p=newProduct(id);for(const key of Object.keys(p)){if(key==='channels'||key==='id')continue;const v=raw?.[key];if(typeof p[key]==='boolean')p[key]=v===true;else if(typeof v==='string'||typeof v==='number')p[key]=String(v).slice(0,12000);}
+  for(const key of ['sku','description','variant','material','purpose','ncm','supplierName','supplierUrl','moq','incoterm','courier','quoteValidUntil','financialExchange','customsExchange','leadDays'])p[key]=typeof raw?.[key]==='string'||typeof raw?.[key]==='number'?String(raw[key]).slice(0,12000):'';
   if(!['manual','demo','historical'].includes(p.origin))p.origin='manual';
   if(!['Triagem','Cotação','Simulação','Revisão','Decisão'].includes(p.stage))p.stage='Triagem';
-  for(const c of CHANNELS)for(const key of Object.keys(p.channels[c.id])){const v=raw?.channels?.[c.id]?.[key];if(typeof p.channels[c.id][key]==='boolean')p.channels[c.id][key]=v===true;else if(typeof v==='string'||typeof v==='number')p.channels[c.id][key]=String(v).slice(0,12000);}
+  for(const c of CHANNELS){for(const key of Object.keys(p.channels[c.id])){const v=raw?.channels?.[c.id]?.[key];if(typeof p.channels[c.id][key]==='boolean')p.channels[c.id][key]=v===true;else if(typeof v==='string'||typeof v==='number')p.channels[c.id][key]=String(v).slice(0,12000);}if(!['gross','product'].includes(p.channels[c.id].rateBase))p.channels[c.id].rateBase='gross';}
   return p;
 }
